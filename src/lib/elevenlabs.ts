@@ -105,25 +105,26 @@ const PREMADE_CANDIDATE_VOICES: ElevenLabsVoice[] = [
 export async function fetchServerElevenLabsVoices(apiKey?: string): Promise<{
   voices: ElevenLabsVoice[];
   hasApiKey: boolean;
+  source: string;
 }> {
   const key = apiKey || process.env.ELEVENLABS_API_KEY?.trim();
   if (!key) {
-    return { voices: [], hasApiKey: false };
+    return { voices: [], hasApiKey: false, source: 'none' };
   }
 
-  // 1. Try querying /v1/voices directly from ElevenLabs
+  // 1. Try querying /v2/voices from ElevenLabs API
   try {
-    const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+    const resV2 = await fetch('https://api.elevenlabs.io/v2/voices', {
       method: 'GET',
       headers: {
         'xi-api-key': key,
         'Accept': 'application/json',
       },
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     });
 
-    if (res.ok) {
-      const data = await res.json();
+    if (resV2.ok) {
+      const data = await resV2.json();
       if (Array.isArray(data.voices) && data.voices.length > 0) {
         const mappedVoices: ElevenLabsVoice[] = data.voices.map((v: any) => ({
           voice_id: v.voice_id,
@@ -133,14 +134,44 @@ export async function fetchServerElevenLabsVoices(apiKey?: string): Promise<{
           labels: v.labels || {},
           preview_url: v.preview_url,
         }));
-        return { voices: mappedVoices, hasApiKey: true };
+        return { voices: mappedVoices, hasApiKey: true, source: 'v2/voices' };
       }
     }
   } catch (err) {
-    console.warn('Direct /v1/voices fetch failed:', err);
+    console.warn('GET /v2/voices fetch notice:', err);
   }
 
-  // 2. If /v1/voices fails (e.g. missing permissions), dynamically verify candidate voices against the API key
+  // 2. Try querying /v1/voices from ElevenLabs API
+  try {
+    const resV1 = await fetch('https://api.elevenlabs.io/v1/voices', {
+      method: 'GET',
+      headers: {
+        'xi-api-key': key,
+        'Accept': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (resV1.ok) {
+      const data = await resV1.json();
+      if (Array.isArray(data.voices) && data.voices.length > 0) {
+        const mappedVoices: ElevenLabsVoice[] = data.voices.map((v: any) => ({
+          voice_id: v.voice_id,
+          name: v.name,
+          category: v.category || 'Premade',
+          description: v.description || v.labels?.use_case || 'ElevenLabs Neural Voice',
+          labels: v.labels || {},
+          preview_url: v.preview_url,
+        }));
+        return { voices: mappedVoices, hasApiKey: true, source: 'v1/voices' };
+      }
+    }
+  } catch (err) {
+    console.warn('GET /v1/voices fetch notice:', err);
+  }
+
+  // 3. If GET /v2/voices and /v1/voices return 401 missing permissions (e.g. key scoped for TTS only),
+  // dynamically test candidate premade voices against the API key to return ONLY working, accessible voices!
   const verifiedVoices: ElevenLabsVoice[] = [];
 
   for (const voice of PREMADE_CANDIDATE_VOICES) {
@@ -162,14 +193,13 @@ export async function fetchServerElevenLabsVoices(apiKey?: string): Promise<{
         }
       );
 
-      // Only include voices that return 200 OK (not 402 Library Voice Payment Required or 404)
       if (testRes.ok) {
         verifiedVoices.push(voice);
       }
     } catch {
-      // Ignore network errors for single candidate
+      // Ignore network failures for single voice test
     }
   }
 
-  return { voices: verifiedVoices, hasApiKey: true };
+  return { voices: verifiedVoices, hasApiKey: true, source: 'verified-account-voices' };
 }

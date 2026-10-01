@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchServerElevenLabsVoices } from '@/lib/elevenlabs';
 
+// Force dynamic evaluation on Vercel serverless functions (prevents static build-time caching)
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   try {
-    const { voices, hasApiKey } = await fetchServerElevenLabsVoices();
+    const { voices, hasApiKey, source } = await fetchServerElevenLabsVoices();
 
     return NextResponse.json(
       {
@@ -11,6 +15,7 @@ export async function GET(req: NextRequest) {
         voices,
         total: voices.length,
         noEligibleVoices: hasApiKey && voices.length === 0,
+        source,
         message:
           voices.length === 0 && hasApiKey
             ? 'No API-compatible voices found for this ElevenLabs account. Free tier API keys cannot access Library voices.'
@@ -19,7 +24,7 @@ export async function GET(req: NextRequest) {
       {
         status: 200,
         headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         },
       }
     );
@@ -32,7 +37,12 @@ export async function GET(req: NextRequest) {
         total: 0,
         noEligibleVoices: true,
       },
-      { status: 200 }
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
     );
   }
 }

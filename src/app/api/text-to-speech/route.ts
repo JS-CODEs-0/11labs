@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateTTSText, validateVoiceId, validateVoiceSettings } from '@/lib/validation';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'ElevenLabs API key is not configured. Please set ELEVENLABS_API_KEY in your .env.local file.',
+            'ElevenLabs API key is not configured on server. Please set ELEVENLABS_API_KEY in Vercel Environment Variables.',
           code: 'MISSING_API_KEY',
         },
         { status: 401 }
@@ -72,8 +75,15 @@ export async function POST(req: NextRequest) {
 
       if (status === 401) {
         return NextResponse.json(
-          { error: 'Authentication failed. Please verify your ElevenLabs API Key.' },
+          { error: 'Authentication failed. Please verify your ElevenLabs API Key in Vercel Environment Variables.' },
           { status: 401 }
+        );
+      }
+
+      if (status === 402) {
+        return NextResponse.json(
+          { error: 'Free tier ElevenLabs accounts cannot use library voices via API. Please select one of the available premade voices (like Adam, Bella, Antoni, or George).' },
+          { status: 402 }
         );
       }
 
